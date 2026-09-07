@@ -92,6 +92,33 @@
       }
     });
 
+    function firestoreErrorMessage(error) {
+      console.error('Event publish error:', error);
+      const code = error?.code || '';
+      const message = String(error?.message || '').toLowerCase();
+      if (code === 'permission-denied' || message.includes('missing or insufficient permissions')) {
+        return 'Firestore permission denied. Deploy the included firestore.rules in Firebase Console, then try again.';
+      }
+      if (code === 'unavailable' || code === 'failed-precondition' || message.includes('network') || message.includes('offline')) {
+        return 'Firestore is unreachable. Disable Brave Shields/ad blockers for yugraj20.github.io and try again.';
+      }
+      if (message.includes('blocked_by_client')) {
+        return 'Your browser blocked Firebase. Disable Brave Shields/ad blockers for this site and try again.';
+      }
+      return `Could not publish the event (${code || 'unknown error'}). Check the browser console for details.`;
+    }
+
+    function withTimeout(promise, ms = 12000) {
+      return Promise.race([
+        promise,
+        new Promise((_, reject) => setTimeout(() => {
+          const error = new Error('Firestore request timed out');
+          error.code = 'timeout';
+          reject(error);
+        }, ms))
+      ]);
+    }
+
     eventForm.addEventListener('submit', async event => {
       event.preventDefault();
       const user = auth.currentUser;
@@ -103,9 +130,10 @@
       const formData = new FormData(eventForm);
       eventSubmit.disabled = true;
       eventSubmit.textContent = 'Publishing...';
-      eventStatus.textContent = '';
+      eventStatus.textContent = 'Connecting to Firestore...';
+      eventStatus.className = 'status';
       try {
-        await addDoc(collection(db, 'events'), {
+        await withTimeout(addDoc(collection(db, 'events'), {
           title: String(formData.get('title') || '').trim(),
           date: formData.get('date'),
           description: String(formData.get('description') || '').trim(),
@@ -113,13 +141,14 @@
           organizerUid: user.uid,
           organizerEmail: user.email || '',
           createdAt: serverTimestamp()
-        });
+        }));
         eventForm.reset();
         eventStatus.textContent = 'Event published successfully.';
         eventStatus.className = 'status success';
       } catch (error) {
-        console.error('Event publish error:', error);
-        eventStatus.textContent = 'We could not publish this event. Check Firestore rules and try again.';
+        eventStatus.textContent = error?.code === 'timeout'
+          ? 'Firebase did not respond within 12 seconds. Disable Brave Shields/ad blockers for this site and check Firestore.'
+          : firestoreErrorMessage(error);
         eventStatus.className = 'status error';
       } finally {
         eventSubmit.disabled = false;
