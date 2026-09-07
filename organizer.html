@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="description" content="Create and manage Gatherly events."><title>Gatherly | Organizer Panel</title><link rel="stylesheet" href="style.css"></head>
+<body>
+  <header class="site-header"><nav class="nav site-shell" aria-label="Main navigation"><a class="brand" href="index.html"><span class="brand-mark" aria-hidden="true">✦</span>Gatherly</a><span style="margin-left:auto"></span><button class="icon-button" id="theme-toggle" type="button" aria-label="Switch color theme" title="Switch color theme">☾</button><a class="button button-secondary" href="index.html">Browse events</a></nav></header>
+  <main class="site-shell">
+    <section class="auth-screen" id="auth-screen"><div class="panel auth-card"><p class="eyebrow">Organizer access</p><h1>Bring people together.</h1><p>Sign in to publish an event for the Gatherly community.</p><button class="button" id="google-sign-in" type="button">Sign in with Google</button><p class="status" id="auth-status" role="status"></p></div></section>
+    <section class="dashboard hidden" id="dashboard"><div class="dashboard-intro"><div><p class="eyebrow">Organizer panel</p><h1>Welcome, <span id="user-name"></span></h1><p>Create an event and it will appear on the discovery page.</p></div><button class="button button-danger" id="logout" type="button">Logout</button></div><div class="panel"><h2>Create an event</h2><form id="event-form"><div class="form-group"><label for="event-title">Event title</label><input id="event-title" name="title" required maxlength="120" placeholder="e.g. Creative morning meetup"></div><div class="form-group"><label for="event-date">Date</label><input id="event-date" name="date" type="date" required></div><div class="form-group"><label for="event-description">Description</label><textarea id="event-description" name="description" required maxlength="1000" placeholder="What can guests look forward to?"></textarea></div><div class="form-group"><label for="event-image">Image URL</label><input id="event-image" name="imageUrl" type="url" required placeholder="https://example.com/event-image.jpg"></div><p class="status" id="event-status" role="status"></p><div class="form-actions"><button class="button" id="event-submit" type="submit">Publish event</button></div></form></div></section>
+  </main>
+  <script type="module">
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.4.0/firebase-app.js';
+    import {
+      getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect,
+      getRedirectResult, signOut, onAuthStateChanged
+    } from 'https://www.gstatic.com/firebasejs/10.4.0/firebase-auth.js';
+    import { getFirestore, collection, addDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.4.0/firebase-firestore.js';
+    import { firebaseConfig } from './firebase-config.js';
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+    const provider = new GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: 'select_account' });
+
+    const authScreen = document.querySelector('#auth-screen');
+    const dashboard = document.querySelector('#dashboard');
+    const authStatus = document.querySelector('#auth-status');
+    const signInButton = document.querySelector('#google-sign-in');
+    const eventForm = document.querySelector('#event-form');
+    const eventStatus = document.querySelector('#event-status');
+    const eventSubmit = document.querySelector('#event-submit');
+
+    function showAuthError(error) {
+      console.error('Google sign-in error:', error);
+      const code = error?.code || '';
+      const messages = {
+        'auth/popup-closed-by-user': 'The Google sign-in window was closed.',
+        'auth/popup-blocked': 'Your browser blocked the sign-in popup. Trying redirect sign-in instead...',
+        'auth/cancelled-popup-request': 'A sign-in request is already in progress.',
+        'auth/unauthorized-domain': 'This website domain is not authorized in Firebase Authentication. Add your current domain in Firebase Console → Authentication → Settings → Authorized domains.',
+        'auth/operation-not-allowed': 'Google sign-in is not enabled. Enable Google under Firebase Console → Authentication → Sign-in method.',
+        'auth/network-request-failed': 'Network error. Check your internet connection and try again.'
+      };
+      authStatus.textContent = messages[code] || `Google sign-in failed (${code || 'unknown error'}). Check the browser console for details.`;
+      authStatus.className = 'status error';
+    }
+
+    async function handleSignIn() {
+      signInButton.disabled = true;
+      signInButton.textContent = 'Signing in...';
+      authStatus.textContent = '';
+      authStatus.className = 'status';
+      try {
+        await signInWithPopup(auth, provider);
+      } catch (error) {
+        if (error?.code === 'auth/popup-blocked') {
+          try {
+            await signInWithRedirect(auth, provider);
+            return;
+          } catch (redirectError) {
+            showAuthError(redirectError);
+          }
+        } else {
+          showAuthError(error);
+        }
+      } finally {
+        signInButton.disabled = false;
+        signInButton.textContent = 'Sign in with Google';
+      }
+    }
+
+    getRedirectResult(auth).catch(error => {
+      if (error) showAuthError(error);
+    });
+
+    onAuthStateChanged(auth, user => {
+      const signedIn = Boolean(user);
+      authScreen.classList.toggle('hidden', signedIn);
+      dashboard.classList.toggle('hidden', !signedIn);
+      if (user) {
+        document.querySelector('#user-name').textContent = user.displayName || user.email || 'Organizer';
+      }
+    });
+
+    signInButton.addEventListener('click', handleSignIn);
+
+    document.querySelector('#logout').addEventListener('click', async () => {
+      try {
+        await signOut(auth);
+      } catch (error) {
+        console.error('Logout error:', error);
+      }
+    });
+
+    eventForm.addEventListener('submit', async event => {
+      event.preventDefault();
+      const user = auth.currentUser;
+      if (!user) {
+        eventStatus.textContent = 'Please sign in with Google first.';
+        eventStatus.className = 'status error';
+        return;
+      }
+      const formData = new FormData(eventForm);
+      eventSubmit.disabled = true;
+      eventSubmit.textContent = 'Publishing...';
+      eventStatus.textContent = '';
+      try {
+        await addDoc(collection(db, 'events'), {
+          title: String(formData.get('title') || '').trim(),
+          date: formData.get('date'),
+          description: String(formData.get('description') || '').trim(),
+          imageUrl: String(formData.get('imageUrl') || '').trim(),
+          organizerUid: user.uid,
+          organizerEmail: user.email || '',
+          createdAt: serverTimestamp()
+        });
+        eventForm.reset();
+        eventStatus.textContent = 'Event published successfully.';
+        eventStatus.className = 'status success';
+      } catch (error) {
+        console.error('Event publish error:', error);
+        eventStatus.textContent = 'We could not publish this event. Check Firestore rules and try again.';
+        eventStatus.className = 'status error';
+      } finally {
+        eventSubmit.disabled = false;
+        eventSubmit.textContent = 'Publish event';
+      }
+    });
+
+    const themeToggle = document.querySelector('#theme-toggle');
+    function applyTheme(theme) {
+      document.documentElement.dataset.theme = theme;
+      localStorage.setItem('theme', theme);
+      themeToggle.textContent = theme === 'dark' ? '☀' : '☾';
+    }
+    applyTheme(localStorage.getItem('theme') || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
+    themeToggle.addEventListener('click', () => applyTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'));
+  </script>
+</body>
+</html>
