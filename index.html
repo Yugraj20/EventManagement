@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Discover and book memorable events.">
+  <title>Gatherly | Discover events</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="site-header">
+    <nav class="nav site-shell" aria-label="Main navigation">
+      <a class="brand" href="index.html"><span class="brand-mark" aria-hidden="true">✦</span>Gatherly</a>
+      <label class="search" aria-label="Search events">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-4-4"></path></svg>
+        <input id="event-search" type="search" placeholder="Search events..." autocomplete="off">
+      </label>
+      <button class="icon-button" id="theme-toggle" type="button" aria-label="Switch color theme" title="Switch color theme">☾</button>
+      <div class="dropdown">
+        <button class="icon-button" id="menu-toggle" type="button" aria-expanded="false" aria-controls="menu" aria-label="Open menu">☰</button>
+        <div class="dropdown-menu" id="menu" role="menu"><a href="organizer.html" role="menuitem">Organizer Panel</a></div>
+      </div>
+    </nav>
+  </header>
+
+  <main>
+    <section class="hero site-shell">
+      <p class="eyebrow">Find your next moment</p>
+      <h1>Events worth getting together for.</h1>
+      <p class="hero-copy">Explore inspiring experiences in your community, then reserve your place in just a few clicks.</p>
+    </section>
+    <section class="events-section site-shell" aria-labelledby="events-title">
+      <div class="section-heading"><h2 id="events-title">Upcoming events</h2><span class="event-count" id="event-count" aria-live="polite">Loading events...</span></div>
+      <div class="event-grid" id="event-grid" aria-live="polite"></div>
+    </section>
+  </main>
+
+  <div class="modal" id="booking-modal" role="dialog" aria-modal="true" aria-labelledby="booking-title">
+    <div class="modal-dialog">
+      <div class="modal-header"><div><h2 class="modal-title" id="booking-title">Book your place</h2><p class="modal-subtitle" id="booking-event-name"></p></div><button class="icon-button close-button" id="close-modal" type="button" aria-label="Close booking form">×</button></div>
+      <form id="booking-form">
+        <div class="form-group"><label for="booking-name">Your name</label><input id="booking-name" name="name" required autocomplete="name"></div>
+        <div class="form-group"><label for="booking-email">Email address</label><input id="booking-email" name="email" type="email" required autocomplete="email"></div>
+        <p class="status" id="booking-status" role="status"></p>
+        <div class="form-actions"><button class="button button-secondary" id="cancel-booking" type="button">Cancel</button><button class="button" id="booking-submit" type="submit">Confirm booking</button></div>
+      </form>
+    </div>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.4.0/firebase-app.js';
+    import { getFirestore, collection, getDocs, addDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.4.0/firebase-firestore.js';
+
+    const firebaseConfig = { apiKey: 'YOUR_API_KEY', authDomain: 'YOUR_AUTH_DOMAIN', projectId: 'YOUR_PROJECT_ID', storageBucket: 'YOUR_STORAGE_BUCKET', messagingSenderId: 'YOUR_MESSAGING_SENDER_ID', appId: 'YOUR_APP_ID' };
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    const grid = document.querySelector('#event-grid');
+    const search = document.querySelector('#event-search');
+    const count = document.querySelector('#event-count');
+    const modal = document.querySelector('#booking-modal');
+    const bookingForm = document.querySelector('#booking-form');
+    const bookingEventName = document.querySelector('#booking-event-name');
+    const bookingStatus = document.querySelector('#booking-status');
+    const bookingSubmit = document.querySelector('#booking-submit');
+    let events = [];
+    let selectedEventId = null;
+
+    const escapeHtml = (value = '') => String(value).replace(/[&<>'"]/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[character]);
+    const formatDate = value => { if (!value) return 'Date to be announced'; const date = new Date(`${value}T00:00:00`); return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(date); };
+    function renderEvents() {
+      const query = search.value.trim().toLowerCase();
+      const visibleEvents = events.filter(event => `${event.title || ''} ${event.description || ''}`.toLowerCase().includes(query));
+      count.textContent = `${visibleEvents.length} event${visibleEvents.length === 1 ? '' : 's'}`;
+      if (!visibleEvents.length) { grid.innerHTML = `<div class="empty-state"><h3>No events found</h3><p>${query ? 'Try a different search term.' : 'Check back soon for new events.'}</p></div>`; return; }
+      grid.innerHTML = visibleEvents.map(event => `<article class="event-card"><img class="event-image" src="${escapeHtml(event.imageUrl || '')}" alt="${escapeHtml(event.title || 'Event')}" onerror="this.style.display='none'" ><div class="event-content"><div class="event-date">◷ ${escapeHtml(formatDate(event.date))}</div><h3 class="event-title">${escapeHtml(event.title || 'Untitled event')}</h3><p class="event-description">${escapeHtml(event.description || 'No description available.')}</p><button class="button book-button" type="button" data-event-id="${escapeHtml(event.id)}" data-event-title="${escapeHtml(event.title || 'this event')}">Book Now</button></div></article>`).join('');
+    }
+    async function loadEvents() { try { const snapshot = await getDocs(collection(db, 'events')); events = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })).sort((a, b) => String(a.date || '').localeCompare(String(b.date || ''))); renderEvents(); } catch (error) { console.error(error); count.textContent = 'Unable to load events'; grid.innerHTML = '<div class="empty-state"><h3>Unable to load events</h3><p>Please check your Firebase configuration and try again.</p></div>'; } }
+    function openBooking(id, title) { selectedEventId = id; bookingEventName.textContent = `Reserve your spot for ${title}.`; bookingForm.reset(); bookingStatus.textContent = ''; bookingStatus.className = 'status'; modal.classList.add('open'); document.querySelector('#booking-name').focus(); }
+    function closeBooking() { modal.classList.remove('open'); selectedEventId = null; }
+    grid.addEventListener('click', event => { const button = event.target.closest('.book-button'); if (button) openBooking(button.dataset.eventId, button.dataset.eventTitle); });
+    search.addEventListener('input', renderEvents);
+    document.querySelector('#close-modal').addEventListener('click', closeBooking); document.querySelector('#cancel-booking').addEventListener('click', closeBooking);
+    modal.addEventListener('click', event => { if (event.target === modal) closeBooking(); });
+    document.addEventListener('keydown', event => { if (event.key === 'Escape') closeBooking(); });
+    bookingForm.addEventListener('submit', async event => { event.preventDefault(); if (!selectedEventId) return; const formData = new FormData(bookingForm); bookingSubmit.disabled = true; bookingSubmit.textContent = 'Saving...'; bookingStatus.textContent = ''; try { await addDoc(collection(db, 'bookings'), { eventId: selectedEventId, name: formData.get('name').trim(), email: formData.get('email').trim(), createdAt: serverTimestamp() }); bookingStatus.textContent = 'Your booking is confirmed. We look forward to seeing you!'; bookingStatus.className = 'status success'; bookingForm.reset(); } catch (error) { console.error(error); bookingStatus.textContent = 'We could not save your booking. Please try again.'; bookingStatus.className = 'status error'; } finally { bookingSubmit.disabled = false; bookingSubmit.textContent = 'Confirm booking'; } });
+    const themeToggle = document.querySelector('#theme-toggle');
+    function applyTheme(theme) { document.documentElement.dataset.theme = theme; localStorage.setItem('theme', theme); themeToggle.textContent = theme === 'dark' ? '☀' : '☾'; }
+    applyTheme(localStorage.getItem('theme') || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
+    themeToggle.addEventListener('click', () => applyTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'));
+    const menuToggle = document.querySelector('#menu-toggle'); const menu = document.querySelector('#menu');
+    menuToggle.addEventListener('click', () => { const isOpen = menu.classList.toggle('open'); menuToggle.setAttribute('aria-expanded', isOpen); });
+    document.addEventListener('click', event => { if (!event.target.closest('.dropdown')) { menu.classList.remove('open'); menuToggle.setAttribute('aria-expanded', 'false'); } });
+    loadEvents();
+  </script>
+</body>
+</html>
