@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 675" role="img" aria-labelledby="title desc">
+  <title id="title">Nexus demo event</title>
+  <desc id="desc">Abstract purple and blue event artwork for Nexus.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#111827"/>
+      <stop offset="0.5" stop-color="#312e81"/>
+      <stop offset="1" stop-color="#7c3aed"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="50%" cy="50%" r="55%">
+      <stop offset="0" stop-color="#a78bfa" stop-opacity=".75"/>
+      <stop offset="1" stop-color="#a78bfa" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1200" height="675" fill="url(#bg)"/>
+  <circle cx="850" cy="270" r="300" fill="url(#glow)"/>
+  <g fill="none" stroke="#fff" stroke-opacity=".22">
+    <circle cx="850" cy="270" r="180" stroke-width="2"/>
+    <circle cx="850" cy="270" r="120" stroke-width="2"/>
+    <path d="M620 430 L850 120 L1080 430 Z" stroke-width="3"/>
+  </g>
+  <text x="85" y="330" fill="#fff" font-family="Arial, Helvetica, sans-serif" font-size="100" font-weight="800">NEXUS</text>
+  <text x="90" y="390" fill="#ddd6fe" font-family="Arial, Helvetica, sans-serif" font-size="28" letter-spacing="8">CONNECT · CREATE · INNOVATE</text>
+</svg>

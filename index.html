@@ -65,6 +65,18 @@
     let events = [];
     let selectedEventId = null;
 
+    // Built-in demo event. It appears when no Nexus event has been published
+    // to Firestore yet, so the site is never empty on a fresh deployment.
+    const demoEvent = {
+      id: 'demo-nexus',
+      title: 'Nexus',
+      date: '2026-09-08',
+      description: 'A demo innovation meetup bringing creators, developers, and curious minds together to connect, share ideas, and build what comes next.',
+      imageUrl: 'nexus-demo.svg',
+      isDemo: true
+    };
+
+
     const escapeHtml = (value = '') => String(value).replace(/[&<>'"]/g, character => ({
       '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
     })[character]);
@@ -127,14 +139,26 @@
         const snapshot = await withTimeout(getDocs(collection(db, 'events')));
         events = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
           .sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')));
+
+        // Keep the demo Nexus event until a real Nexus event exists.
+        if (!events.some(event => String(event.title || '').trim().toLowerCase() === 'nexus')) {
+          events.unshift(demoEvent);
+        }
         renderEvents();
       } catch (error) {
         const message = error?.code === 'timeout'
-          ? 'Firebase did not respond within 12 seconds. Disable Brave Shields/ad blockers for this site and check Firestore.'
+          ? 'Firebase did not respond within 12 seconds. Showing the demo event. Disable Brave Shields/ad blockers for this site to load live events.'
           : firestoreReadErrorMessage(error);
-        count.textContent = 'Unable to load events';
-        grid.innerHTML = `<div class="empty-state"><h3>Unable to load events</h3><p>${escapeHtml(message)}</p><button class="button" id="retry-events" type="button">Retry</button></div>`;
-        document.querySelector('#retry-events')?.addEventListener('click', loadEvents);
+        console.error('Live events unavailable, showing demo event:', error);
+        events = [demoEvent];
+        count.textContent = '1 event';
+        renderEvents();
+        const notice = document.createElement('p');
+        notice.className = 'status';
+        notice.style.textAlign = 'center';
+        notice.style.marginTop = '1rem';
+        notice.textContent = `Demo event shown. ${message}`;
+        grid.insertAdjacentElement('afterend', notice);
       }
     }
 
